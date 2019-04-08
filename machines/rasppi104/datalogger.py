@@ -32,15 +32,15 @@ class MovementReader(threading.Thread):
     def run(self):
         movement = 0
         for _ in range(0, 10):
-            movement = movement + wp.digitalRead(0)
+            movement = movement + wp.digitalRead(4)
             time.sleep(0.1)
         self.movement = float(movement) / 10
         while not self.quit:
-            self.ttl = 100
+            self.ttl = 200
             movement = 0
             avg_length = 100
             for _ in range(0, avg_length):
-                movement = movement + wp.digitalRead(0)
+                movement = movement + wp.digitalRead(4)
                 time.sleep(0.25)
             self.movement = float(movement) / avg_length
 
