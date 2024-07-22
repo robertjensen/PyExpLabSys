@@ -1,3 +1,6 @@
+"""
+Common driver for XP Power HPA and HPT series.
+"""
 import time
 import smbus
 
@@ -7,6 +10,15 @@ class XP_HPA_PS(object):
         self.bus = smbus.SMBus(1)
         self.bus.pec = True  # Enable PEC-check, is this good?
         self.device_address = i2c_address
+        self.v_out_mode = self._find_v_out_mode()
+
+    def _find_v_out_mode(self):
+        v_out_mode_raw = self.bus.read_i2c_block_data(self.device_address, 0x20, 1)
+        if v_out_mode_raw[0] > 2**4:
+            value = v_out_mode_raw[0] - 2**5
+        else:
+            value = v_out_mode_raw[0]
+        return value
 
     def read_manufacturer(self):
         data = self.bus.read_i2c_block_data(self.device_address, 0x99, 16)
@@ -85,8 +97,7 @@ class XP_HPA_PS(object):
 
     def read_actual_voltage(self):
         data = self.bus.read_i2c_block_data(self.device_address, 0x8b, 2)
-        # print('Actual voltage readback: {}'.format(data))
-        voltage = (256 * data[1] + data[0]) / 1024.0
+        voltage = (256 * data[1] + data[0]) * 2**self.v_out_mode
         return voltage
 
     def read_actual_current(self):
@@ -264,7 +275,7 @@ class XP_HPA_PS(object):
 
     def set_voltage(self, voltage):
         # Todo, check value is within range
-        decivoltage = int(voltage * 1024)
+        decivoltage = int(voltage / 2**self.v_out_mode)
         high_byte = decivoltage >> 8
         low_byte = decivoltage % 256
         data = [low_byte, high_byte]
@@ -282,6 +293,7 @@ class XP_HPA_PS(object):
 
 if __name__ == '__main__':
     xp = XP_HPA_PS()
+
     xp.write_enable()
     # xp.store_user_all()
     xp.operation(turn_on=True)
