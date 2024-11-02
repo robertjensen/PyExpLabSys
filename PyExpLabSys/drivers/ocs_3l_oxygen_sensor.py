@@ -12,8 +12,9 @@ import wiringpi as wp
 
 
 class OCS3L(object):
-    def __init__(self, port='/dev/serial1'):
+    def __init__(self, port='/dev/serial1', humidity_sensor=False):
         self.ser = serial.Serial(port, 9600, timeout=2)
+        self.humidity_sensor = humidity_sensor
         time.sleep(0.1)
 
     def read(self):
@@ -29,8 +30,22 @@ class OCS3L(object):
         concentration = (data[3] * 256 + data[4]) / 10.0
         return concentration
 
+    def _read_flow(self, data):
+        flow = (data[5] * 256 + data[6]) / 10.0
+        return flow
+
+    def _read_humidity(self, data):
+        if self.humidity_sensor:
+            humidity = data[7]
+        else:
+            humidity = -1
+        return humidity
+
     def _read_temperature(self, data):
-        temperature = (data[7] * 256 + data[8]) / 10.0
+        if self.humidity_sensor:
+            temperature = data[8]
+        else:
+            temperature = (data[7] * 256 + data[8]) / 10.0
         return temperature
 
     def _check_full_checksum(self, data):
@@ -44,6 +59,7 @@ class OCS3L(object):
         return success
 
     def read_oxygen_and_temperature(self):
+        # This function is deprecated. Use read_all_values()
         data = self.read()
 
         checksum = self._check_full_checksum(data)
@@ -54,14 +70,31 @@ class OCS3L(object):
         temperature = self._read_temperature(data)
         # msg = 'Oxygen concentration: {}%, Temperature: {}C. Checksum: {}'
         # print(msg.format(concentration, temperature, checksum))
-        return(concentration, temperature)
+        return (concentration, temperature)
+
+    def read_all_values(self):
+        data = self.read()
+
+        checksum = self._check_full_checksum(data)
+        if not checksum:
+            return None
+
+        concentration = self._read_oxygen(data)
+        temperature = self._read_temperature(data)
+        humidity = self._read_humidity(data)
+        flow = self._read_flow(data)
+        return (concentration, temperature, humidity, flow)
 
 
 if __name__ == '__main__':
-    oxygen_sensor = OCS3L(port='/dev/serial1')
+    wp.wiringPiSetup()
+    wp.digitalWrite(6, 1)
+    wp.digitalWrite(7, 0)
+
+    oxygen_sensor = OCS3L(port='/dev/serial1', humidity_sensor=True)
     while True:
-        readout = oxygen_sensor.read_oxygen_and_temperature()
+        readout = oxygen_sensor.read_all_values()
         if readout is not None:
-            print('Oxygen: {}%. Temperature: {}C'.format(readout[0], readout[1]))
+            print('O2: {}%. Temp {}C. Hum: {}%. Flow: {}L/min'.format(*readout))
         else:
             print('Missed read')
