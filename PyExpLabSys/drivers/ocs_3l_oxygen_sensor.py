@@ -6,7 +6,7 @@ Notice that this sensor is highly cross-sensitive to other
 gasses than oxygen.
 """
 import time
-
+import collections
 import serial
 import wiringpi as wp
 
@@ -15,15 +15,21 @@ class OCS3L(object):
     def __init__(self, port='/dev/serial1', humidity_sensor=False):
         self.ser = serial.Serial(port, 9600, timeout=2)
         self.humidity_sensor = humidity_sensor
+        self.start_indicator = collections.deque([b'\x16', b'\t', b'\x01'])
         time.sleep(0.1)
 
     def read(self):
         _ = self.ser.read(self.ser.inWaiting())
-        start = b''
-        while not (start == b'\x16\t\x01'):
-            start = self.ser.read(3)
+
+        start = collections.deque(maxlen=3)
+        while not (start == self.start_indicator):
+            start.append(self.ser.read(1))
+        data = b''
+        for c in start:
+            data += c
+
         rest = self.ser.read(9)
-        data = start + rest
+        data = data + rest
         return data
 
     def _read_oxygen(self, data):
@@ -53,9 +59,12 @@ class OCS3L(object):
         for val in data[:-1]:
             expected_checksum += val
             expected_checksum = expected_checksum % 256
-        expected_checksum = 256 - expected_checksum
+        expected_checksum = (256 - expected_checksum) % 256
 
         success = (expected_checksum == data[-1])
+        if not success:
+            msg = 'Checksum failed. Calculated: {}. Expected: {}'
+            print(msg.format(expected_checksum, data[-1]))
         return success
 
     def read_oxygen_and_temperature(self):
@@ -96,5 +105,6 @@ if __name__ == '__main__':
         readout = oxygen_sensor.read_all_values()
         if readout is not None:
             print('O2: {}%. Temp {}C. Hum: {}%. Flow: {}L/min'.format(*readout))
+            time.sleep(0.25)
         else:
             print('Missed read')
